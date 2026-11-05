@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Resumen de pedidos</title>
+<style>
+:root{--ivory:#F7F2EA;--ink:#1E1519;--acc:#8A6431;--line:#E3D9C8;--mute:#7A6C60;--dark:#1E1519}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',system-ui,Arial,sans-serif;background:var(--ivory);color:var(--ink);line-height:1.45}
+.wrap{max-width:820px;margin:0 auto;padding:20px 16px 60px}
+h1{font-family:Georgia,serif;font-size:32px;font-weight:600;margin-bottom:4px}
+.sub{color:var(--mute);margin-bottom:18px}
+ol.how{margin:0 0 16px 20px;color:var(--ink)}ol.how li{margin-bottom:4px}
+textarea{width:100%;height:220px;border:1px solid var(--line);border-radius:12px;padding:12px;font:15px/1.4 system-ui,Arial,sans-serif;background:#fff;color:var(--ink);resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
+button{border:0;border-radius:10px;padding:12px 18px;font:600 16px system-ui,Arial,sans-serif;cursor:pointer}
+.go{background:var(--dark);color:#F1E8DA}.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}.print{background:#1FA855;color:#fff}
+label{font-size:15px;color:var(--mute)}input[type=text]{border:1px solid var(--line);border-radius:8px;padding:10px;font:16px system-ui,Arial,sans-serif;background:#fff}
+.msg{padding:10px 12px;border-radius:10px;background:#FFF4DC;border:1px solid #EAD59A;margin:10px 0;display:none}
+.sheet{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px}
+.sheet h2{font-family:Georgia,serif;font-size:26px;margin-bottom:2px}.sheet .meta{color:var(--mute);font-size:14px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse}td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:16px}
+th{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--mute)}td.q,th.q{text-align:right;width:70px;font-weight:700}
+td.b{width:30px;font-size:20px}
+.cl{margin-top:14px;break-inside:avoid;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.cl h3{font-size:18px;display:flex;justify-content:space-between;gap:10px}.cl h3 small{font-weight:400;color:var(--mute);font-size:13px}
+.tot{margin-top:10px;font-weight:700;text-align:right}
+.hide{display:none}
+@media print{@page{margin:12mm}
+  body{background:#fff}.wrap{max-width:none;padding:0}
+  .noprint{display:none!important}
+  .sheet{border:0;padding:0;margin:0;border-radius:0}
+  .pb{break-before:page}
+  .cl{border:1px solid #999}
+}
+</style></head><body><div class="wrap">
+<div class="noprint">
+<h1>Resumen de pedidos</h1>
+<p class="sub">Pegá los pedidos que te llegaron por WhatsApp y armá la lista para imprimir.</p>
+<ol class="how"><li>En WhatsApp, mantené apretado un mensaje de pedido y seleccioná todos los del día (o copiá el chat).</li><li>Tocá <b>Copiar</b> y pegalos acá abajo.</li><li>Tocá <b>Armar resumen</b> y después <b>Imprimir</b>.</li></ol>
+<textarea id="t" placeholder="Pegá acá los mensajes de pedidos…"></textarea>
+<div class="row"><button class="go" id="go">Armar resumen</button><button class="ghost" id="clr">Borrar todo</button>
+<span style="flex:1"></span><label for="d">Fecha:</label><input type="text" id="d" size="12"></div>
+<div class="msg" id="msg"></div>
+</div>
+<div id="out"></div>
+<div class="row noprint hide" id="pr"><button class="print" id="prbtn">Imprimir</button></div>
+</div>
+<script>
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function norm(s){return s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase()}
+function today(){var n=new Date();return n.getDate()+"/"+(n.getMonth()+1)+"/"+n.getFullYear()}
+var T=document.getElementById("t"),D=document.getElementById("d"),M=document.getElementById("msg");
+D.value=today();
+try{T.value=localStorage.getItem("pedidos_txt")||""}catch(e){}
+T.addEventListener("input",function(){try{localStorage.setItem("pedidos_txt",T.value)}catch(e){}});
+
+function parse(txt){
+  txt=txt.replace(/\r/g,"").replace(/[‎‏‪-‮]/g,"");
+  var re=/quiero hacer este pedido/ig,starts=[],m;
+  while((m=re.exec(txt))){
+    var ls=txt.lastIndexOf("\n",m.index)+1;
+    starts.push({line:ls,at:m.index})}
+  var orders=[];
+  for(var i=0;i<starts.length;i++){
+    var s=starts[i],end=i+1<starts.length?starts[i+1].line:txt.length;
+    var head=txt.slice(s.line,s.at);
+    var body=txt.slice(s.at,end).split("\n").slice(1);
+    // quitar el "Hola!" y marcas de tiempo del encabezado para sacar quien lo envió
+    var sender="";
+    var hm=head.match(/^\s*\[?[^\]\-]*?\d{1,2}[:.]\d{2}[^\]\-:]*\]?\s*[-–]?\s*([^:]{1,40}):\s*/);
+    if(hm)sender=hm[1].trim();
+    var name="",items=[];
+    body.forEach(function(l){
+      var t=l.trim();if(!t)return;
+      var nm=t.match(/^nombre\s*:\s*(.+)$/i);if(nm){name=nm[1].trim();return}
+      var im=t.match(/^[•\-\*·●▪]?\s*(.+?)\s+[x×]\s*(\d+)\s*$/i);
+      if(im)items.push({n:im[1].trim(),q:parseInt(im[2],10)})});
+    if(items.length)orders.push({who:name||sender,items:items})}
+  return orders}
+
+function build(){
+  var orders=parse(T.value);
+  var out=document.getElementById("out"),pr=document.getElementById("pr");
+  if(!orders.length){out.innerHTML="";pr.classList.add("hide");
+    M.style.display="block";M.textContent="No encontré pedidos. Fijate de pegar mensajes que empiecen con “Hola! Quiero hacer este pedido:”.";return}
+  M.style.display="none";
+  var tot={},sum=0;
+  orders.forEach(function(o){o.items.forEach(function(it){var k=it.n;tot[k]=(tot[k]||0)+it.q;sum+=it.q})});
+  var keys=Object.keys(tot).sort(function(a,b){return norm(a)<norm(b)?-1:1});
+  var date=D.value||today();
+  var h='<div class="sheet"><h2>Pedidos por cliente</h2><div class="meta">'+esc(date)+' · '+orders.length+' pedidos · '+sum+' unidades</div>';
+  orders.forEach(function(o,i){
+    var n=0;o.items.forEach(function(it){n+=it.q});
+    h+='<div class="cl"><h3><span>'+(i+1)+'. '+esc(o.who||"Cliente "+(i+1))+'</span><small>'+n+' u.</small></h3><table>'+
+      o.items.map(function(it){return '<tr><td class="b">☐</td><td>'+esc(it.n)+'</td><td class="q">× '+it.q+'</td></tr>'}).join("")+'</table></div>'});
+  h+='</div><div class="sheet pb"><h2>Total para preparar</h2><div class="meta">'+esc(date)+' · '+keys.length+' productos · '+sum+' unidades</div><table><tr><th></th><th>Producto</th><th class="q">Cant.</th></tr>'+
+    keys.map(function(k){return '<tr><td class="b">☐</td><td>'+esc(k)+'</td><td class="q">'+tot[k]+'</td></tr>'}).join("")+
+    '</table><div class="tot">Total: '+sum+' unidades</div></div>';
+  out.innerHTML=h;pr.classList.remove("hide");
+  out.scrollIntoView({behavior:"smooth"})}
+document.getElementById("go").onclick=build;
+document.getElementById("prbtn").onclick=function(){window.print()};
+document.getElementById("clr").onclick=function(){T.value="";try{localStorage.removeItem("pedidos_txt")}catch(e){}
+  document.getElementById("out").innerHTML="";document.getElementById("pr").classList.add("hide");M.style.display="none"};
+</script></body></html>
