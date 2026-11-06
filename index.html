@@ -114,4 +114,18 @@ render();updateBar();
 (function(){var e=document.getElementById("cname");if(!e)return;try{e.value=localStorage.getItem("cname")||""}catch(x){}
 e.addEventListener("input",function(){try{localStorage.setItem("cname",e.value)}catch(x){}renderSheet()})})();
 
+// --- Registro de pedidos en la planilla de Google (se completa con la dirección del script)
+var SHEET_URL="https://script.google.com/macros/s/AKfycbxBgjja0v5357EOLMuyQe8PczkRodQ0re5ZFGOXbTpiQaUpGNLPPFs_zkaDvxOrk8rBuw/exec";
+var lastSent={body:"",t:0};
+document.getElementById("send").addEventListener("click",function(){
+  if(!SHEET_URL||!total())return;
+  try{
+    var body=JSON.stringify({nombre:cname(),items:Object.keys(cart).map(function(k){return{n:lineName(k),q:cart[k]}})});
+    var now=Date.now();
+    if(body===lastSent.body&&now-lastSent.t<20000)return;
+    lastSent={body:body,t:now};
+    navigator.sendBeacon(SHEET_URL,body);
+  }catch(e){}
+});
+
 </script></body></html>
